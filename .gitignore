@@ -1,0 +1,6 @@
+*.a
+*.o
+mshell
+input_parse/lex.yy.c
+input_parse/y.tab.c
+input_parse/y.tab.h
