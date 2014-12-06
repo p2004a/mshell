@@ -146,7 +146,7 @@ void yyerror(char *s) {
 }
 
 
-line * parseline(char *str){
+line * parseline(const char *str){
 	int parseresult;
 
 	resetutils();

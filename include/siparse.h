@@ -49,6 +49,6 @@ typedef struct line {
  * Passing a string longer than MAX_LINE_LENGHT may result in an unspecified behaviour.
  * Consecutive calls to the function destroy the content of previously returned structures.
  */
-line * parseline(char *);
+line * parseline(const char *);
 
 #endif /* !_SIPARSE_H_ */

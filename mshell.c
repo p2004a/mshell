@@ -11,6 +11,7 @@
 #include "siparse.h"
 #include "utils.h"
 #include "builtins.h"
+#include "linereader.h"
 
 int
 exec_command(char * file, char *const argv[]) {
@@ -41,7 +42,7 @@ error:
 }
 
 int
-parse_command_line(char * buffor) {
+parse_command_line(const char * buffor) {
 	line * ln;
 	command * com;
 	int return_status;
@@ -96,94 +97,34 @@ error:
 }
 
 int
-find_newline(char * buf, ssize_t size) {
-	int i;
-	for (i = 0; i < size; ++i) {
-		if (buf[i] == '\n') {
-			return i;
-		}
-	}
-	return -1;
-}
-
-int
 main(int argc, char * argv[]) {
-	char * buffor;
-	ssize_t read_bytes;
-	struct stat stdin_stat;
-	int print_prompt = 1;
+	const char * line;
 	int result;
-	int offset;
-	int line_end;
-	int execed_command;
-	int ignore_command;
+	struct linereader lr;
 
-	result = fstat(STDIN_FILENO, &stdin_stat);
+	result = lr_init(&lr);
 	if (result == -1) {
-		goto error0;
-	}
-	print_prompt = S_ISCHR(stdin_stat.st_mode);
-
-	buffor = malloc(MAX_LINE_LENGTH + 1);
-	if (!buffor) {
-		goto error0;
-	}
-	offset = 0;
-
-	read_bytes = 1;
-	execed_command = 1;
-	ignore_command = 0;
-	while (read_bytes > 0 || offset > 0) {
-		if (print_prompt && execed_command) {
-			execed_command = 0;
-			printf(PROMPT_STR);
-			fflush(stdout);
-		}
-
-		line_end = find_newline(buffor, offset);
-
-		if (line_end == -1 && offset == MAX_LINE_LENGTH + 1) { // line too long
-			offset = 0;
-			ignore_command = 1;
-		}
-
-		if (line_end != -1 || read_bytes == 0) {
-			if (line_end == -1) {
-				line_end = offset;
-			}
-			buffor[line_end] = '\0';
-
-			if (ignore_command) {
-				fprintf(stderr, "%s\n", SYNTAX_ERROR_STR);
-				fflush(stderr);
-				ignore_command = 0;
-			} else {
-				result = parse_command_line(buffor);
-				if (result == -1) {
-					goto error1;
-				}
-			}
-			execed_command = 1;
-
-			offset -= line_end + 1;
-			memmove(buffor, buffor + line_end + 1, offset);
-		} else {
-			do {
-				read_bytes = read(STDIN_FILENO, buffor + offset, MAX_LINE_LENGTH + 1 - offset);
-			} while (read_bytes == -1 && errno == EINTR);
-			if (read_bytes == -1) {
-				goto error1;
-			}
-
-			offset += read_bytes;
-		}
+		goto error;
 	}
 
-	free(buffor);
-	exit(0);
-error1:
-	free(buffor);
-error0:
+	do {
+		result = lr_readline(&lr, &line);
+		if (result == -1) {
+			goto error;
+		}
+		if (line != NULL) {
+			result = parse_command_line(line);
+			if (result == -1) {
+				goto error;
+			}
+		}
+	} while (line != NULL);
+
+	lr_clean(&lr);
+	return 0;
+
+error:
+	lr_clean(&lr);
 	perror("main: ");
 	exit(1);
 }
