@@ -24,7 +24,7 @@ lr_init(struct linereader * lr) {
 		goto error;
 	}
 	lr->offset = 0;
-	lr->last_line_length = 0;
+	lr->last_line_length = -1;
 
 	return 0;
 error:
@@ -50,10 +50,10 @@ lr_readline(struct linereader * lr, char const** res) {
 	ignore_command = 0;
 	read_bytes = 1;
 
-	if (lr->last_line_length > 0) {
+	if (lr->last_line_length != -1) {
 		lr->offset -= lr->last_line_length + 1;
 		memmove(lr->buffor, lr->buffor + lr->last_line_length + 1, lr->offset);
-		lr->last_line_length = 0;
+		lr->last_line_length = -1;
 	}
 
 	while (read_bytes > 0 || lr->offset > 0) {
@@ -64,7 +64,6 @@ lr_readline(struct linereader * lr, char const** res) {
 		}
 
 		line_end = find_newline(lr->buffor, lr->offset);
-
 		if (line_end == -1 && lr->offset == MAX_LINE_LENGTH + 1) { // line too long
 			lr->offset = 0;
 			ignore_command = 1;
