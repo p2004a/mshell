@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include "config.h"
 #include "siparse.h"
@@ -14,9 +15,36 @@
 #include "linereader.h"
 
 int
+redirect(const char *filename, int flags, int to_fd) {
+	int fd, fd_dup;
+
+	fd = open(filename, flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if (fd == -1) {
+		fprintf(stderr, "%s: %s\n", filename, strerror(errno));
+		goto error;
+	}
+	fd_dup = dup2(fd, to_fd);
+	if (fd_dup != to_fd) {
+		fprintf(stderr, "dup2 failed to copy %d to %d\n", fd, to_fd);
+		goto error;
+	}
+	if (close(fd) == -1) {
+		fprintf(stderr, "closing %d failed: %s\n", fd, strerror(errno));
+		goto error;
+	}
+	return 0;
+error:
+	return -1;
+}
+
+int
 exec_command(command * com) {
 	int return_status, status;
 	pid_t child_pid;
+
+	char *input_filename, *output_filename;
+	int output_additional_flags;
+	redirection **redir;
 
 	child_pid = fork();
 	if (child_pid == -1) {
@@ -32,13 +60,38 @@ exec_command(command * com) {
 		}
 		return return_status;
 	} else { // child
+		input_filename = NULL;
+		output_filename = NULL;
+
+		for (redir = com->redirs; *redir != NULL; ++redir) {
+			if (IS_RIN((*redir)->flags)) {
+				input_filename = (*redir)->filename;
+			} else if (IS_ROUT((*redir)->flags)) {
+				output_filename = (*redir)->filename;
+				output_additional_flags = O_TRUNC;
+			} else if (IS_RAPPEND((*redir)->flags)) {
+				output_filename = (*redir)->filename;
+				output_additional_flags = O_APPEND;
+			}
+		}
+
+		if (input_filename && redirect(input_filename, O_RDONLY, STDIN_FILENO) == -1) {
+			goto child_error;
+		}
+
+		if (output_filename && redirect(output_filename, O_WRONLY | O_CREAT | output_additional_flags, STDOUT_FILENO) == -1) {
+			goto child_error;
+		}
+
 		execvp(com->argv[0], com->argv);
 		fprintf(stderr, "%s: %s\n", com->argv[0], strerror(errno));
-		exit(EXEC_FAILURE);
+		goto child_error;
 	}
 
 error:
 	return -1;
+child_error:
+	exit(EXEC_FAILURE);
 }
 
 int
