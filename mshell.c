@@ -14,7 +14,7 @@
 #include "linereader.h"
 
 int
-exec_command(char * file, char *const argv[]) {
+exec_command(command * com) {
 	int return_status, status;
 	pid_t child_pid;
 
@@ -32,8 +32,8 @@ exec_command(char * file, char *const argv[]) {
 		}
 		return return_status;
 	} else { // child
-		execvp(file, argv);
-		fprintf(stderr, "%s: %s\n", file, strerror(errno));
+		execvp(com->argv[0], com->argv);
+		fprintf(stderr, "%s: %s\n", com->argv[0], strerror(errno));
 		exit(EXEC_FAILURE);
 	}
 
@@ -46,8 +46,7 @@ parse_command_line(const char * buffor) {
 	line * ln;
 	command * com;
 	int return_status;
-	builtin_pair * builtin;
-	int called_builtin;
+	builtin_func builtin;
 	int argc;
 
 	ln = parseline(buffor);
@@ -62,20 +61,15 @@ parse_command_line(const char * buffor) {
 		return 0;
 	}
 
-	called_builtin = 0;
-	for (builtin = builtins_table; !called_builtin && builtin->name != NULL; ++builtin) {
-		if (strcmp(builtin->name, com->argv[0]) == 0) {
-			called_builtin = 1;
-			for (argc = 0; com->argv[argc]; ++argc);
-			if (builtin->fun(argc, com->argv) == BUILTIN_ERROR) {
-				fprintf(stderr, "Builtin %s error.\n", com->argv[0]);
-				fflush(stderr);
-			}
+	builtin = get_builtin(com->argv[0]);
+	if (builtin) {
+		for (argc = 0; com->argv[argc]; ++argc);
+		if (builtin(argc, com->argv) == BUILTIN_ERROR) {
+			fprintf(stderr, "Builtin %s error.\n", com->argv[0]);
+			fflush(stderr);
 		}
-	}
-
-	if (!called_builtin) {
-		return_status = exec_command(com->argv[0], com->argv);
+	} else {
+		return_status = exec_command(com);
 		if (return_status == -1) {
 			goto error;
 		}

@@ -27,6 +27,16 @@ builtin_pair builtins_table[]={
 	{NULL,NULL}
 };
 
+builtin_func get_builtin(const char *name) {
+	builtin_pair * builtin;
+	for (builtin = builtins_table; builtin->name != NULL; ++builtin) {
+		if (strcmp(builtin->name, name) == 0) {
+			return builtin->func;
+		}
+	}
+	return NULL;
+}
+
 int
 builtin_undefined(int argc, char * argv[]) {
 	fprintf(stderr, "Command %s undefined.\n", argv[0]);
