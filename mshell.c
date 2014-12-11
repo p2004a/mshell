@@ -94,22 +94,12 @@ child_error:
 	exit(EXEC_FAILURE);
 }
 
-int
-parse_command_line(const char * buffor) {
-	line * ln;
-	command * com;
-	int return_status;
+int exec_pipeline(pipeline pl) {
+	command *com;
+	int return_status, argc;
 	builtin_func builtin;
-	int argc;
 
-	ln = parseline(buffor);
-	if (ln == NULL) {
-		fprintf(stderr, "%s\n", SYNTAX_ERROR_STR);
-		fflush(stderr);
-		return 0;
-	}
-
-	com = pickfirstcommand(ln);
+	com = pl[0];
 	if (com->argv[0] == NULL) {
 		return 0;
 	}
@@ -144,6 +134,55 @@ error:
 }
 
 int
+check_line(line * ln) {
+	if (ln == NULL) {
+		return 0;
+	}
+	pipeline * cl;
+	pipeline pl;
+	command * com;
+	int pl_len, was_null;
+	for (cl = ln->pipelines; *cl != NULL; ++cl) {
+		pl_len = 0;
+		was_null = 0;
+		for (pl = *cl; *pl != NULL; ++pl) {
+			++pl_len;
+			com = *pl;
+			if (com->argv[0] == NULL) {
+				was_null = 1;
+			}
+		}
+		if (pl_len > 1 && was_null) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+int
+exec_command_line(const char * buffor) {
+	line * ln;
+	pipeline * cl;
+
+	ln = parseline(buffor);
+	if (!check_line(ln)) {
+		fprintf(stderr, "%s\n", SYNTAX_ERROR_STR);
+		fflush(stderr);
+		return 0;
+	}
+
+	for (cl = ln->pipelines; *cl != NULL; ++cl) {
+		if (exec_pipeline(*cl) == -1) {
+			goto error;
+		}
+	}
+
+	return 0;
+error:
+	return -1;
+}
+
+int
 main(int argc, char * argv[]) {
 	const char * line;
 	int result;
@@ -160,7 +199,7 @@ main(int argc, char * argv[]) {
 			goto error;
 		}
 		if (line != NULL) {
-			result = parse_command_line(line);
+			result = exec_command_line(line);
 			if (result == -1) {
 				goto error;
 			}
