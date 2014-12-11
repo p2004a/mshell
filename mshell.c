@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 1
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
@@ -44,14 +45,13 @@ exec_command(command * com) {
 
 	char *input_filename, *output_filename;
 	int output_additional_flags;
-	redirection **redir;
+	redirection ** redir;
 
 	child_pid = fork();
 	if (child_pid == -1) {
 		goto error;
 	}
-	if (child_pid) { // parent
-		int return_status;
+	if (child_pid) { /* parent */
 		do {
 			status = waitpid(child_pid, &return_status, 0);
 		} while (status == -1 && errno == EINTR);
@@ -59,7 +59,7 @@ exec_command(command * com) {
 			goto error;
 		}
 		return return_status;
-	} else { // child
+	} else { /* child */
 		input_filename = NULL;
 		output_filename = NULL;
 
@@ -96,35 +96,44 @@ child_error:
 
 int exec_pipeline(pipeline pl) {
 	command *com;
-	int return_status, argc;
+	int i, return_status, argc, pl_len;
 	builtin_func builtin;
+	pipeline tmp_pl;
 
-	com = pl[0];
-	if (com->argv[0] == NULL) {
-		return 0;
+	pl_len = 0;
+	for (tmp_pl = pl; *tmp_pl != NULL; ++tmp_pl) {
+		++pl_len;
 	}
 
-	builtin = get_builtin(com->argv[0]);
-	if (builtin) {
-		for (argc = 0; com->argv[argc]; ++argc);
-		if (builtin(argc, com->argv) == BUILTIN_ERROR) {
-			fprintf(stderr, "Builtin %s error.\n", com->argv[0]);
-			fflush(stderr);
+	for (i = 0; i < pl_len; ++i) {
+		com = pl[i];
+
+		if (com->argv[0] == NULL) {
+			continue;
 		}
-	} else {
-		return_status = exec_command(com);
-		if (return_status == -1) {
-			goto error;
-		}
-		if (WIFEXITED(return_status)) {
-			return_status = WEXITSTATUS(return_status);
-			if (return_status != 0 && return_status != EXEC_FAILURE) {
-				printf("Program returned status %d\n", return_status);
+
+		builtin = get_builtin(com->argv[0]);
+		if (builtin && pl_len > 1) {
+			for (argc = 0; com->argv[argc]; ++argc);
+			if (builtin(argc, com->argv) == BUILTIN_ERROR) {
+				fprintf(stderr, "Builtin %s error.\n", com->argv[0]);
+				fflush(stderr);
+			}
+		} else {
+			return_status = exec_command(com);
+			if (return_status == -1) {
+				goto error;
+			}
+			if (WIFEXITED(return_status)) {
+				return_status = WEXITSTATUS(return_status);
+				if (return_status != 0 && return_status != EXEC_FAILURE) {
+					printf("Program returned status %d\n", return_status);
+					fflush(stdout);
+				}
+			} else if (WIFSIGNALED(return_status)) {
+				printf("Program killed by signal %d\n", WTERMSIG(return_status));
 				fflush(stdout);
 			}
-		} else if (WIFSIGNALED(return_status)) {
-			printf("Program killed by signal %d\n", WTERMSIG(return_status));
-			fflush(stdout);
 		}
 	}
 
@@ -135,13 +144,15 @@ error:
 
 int
 check_line(line * ln) {
-	if (ln == NULL) {
-		return 0;
-	}
 	pipeline * cl;
 	pipeline pl;
 	command * com;
 	int pl_len, was_null;
+
+	if (ln == NULL) {
+		return 0;
+	}
+
 	for (cl = ln->pipelines; *cl != NULL; ++cl) {
 		pl_len = 0;
 		was_null = 0;

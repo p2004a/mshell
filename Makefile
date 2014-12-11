@@ -1,5 +1,5 @@
 INC=-Iinclude
-CFLAGS=$(INC)
+CFLAGS=$(INC) -Wall -Wextra -ansi -pedantic -Wno-unused-parameter
 
 PARSERDIR=input_parse
 

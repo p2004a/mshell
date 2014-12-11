@@ -44,7 +44,7 @@ find_newline(char * buf, ssize_t size) {
 
 int
 lr_readline(struct linereader * lr, char const** res) {
-	int line_end, result, finished_line, ignore_command, read_bytes;
+	int line_end, finished_line, ignore_command, read_bytes;
 
 	finished_line = 1;
 	ignore_command = 0;
@@ -64,7 +64,7 @@ lr_readline(struct linereader * lr, char const** res) {
 		}
 
 		line_end = find_newline(lr->buffor, lr->offset);
-		if (line_end == -1 && lr->offset == MAX_LINE_LENGTH + 1) { // line too long
+		if (line_end == -1 && lr->offset == MAX_LINE_LENGTH + 1) { /* line too long */
 			lr->offset = 0;
 			ignore_command = 1;
 		}

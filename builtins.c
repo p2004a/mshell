@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 1
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -27,7 +28,7 @@ builtin_pair builtins_table[]={
 	{NULL,NULL}
 };
 
-builtin_func get_builtin(const char *name) {
+builtin_func get_builtin(const char * name) {
 	builtin_pair * builtin;
 	for (builtin = builtins_table; builtin->name != NULL; ++builtin) {
 		if (strcmp(builtin->name, name) == 0) {
@@ -116,8 +117,9 @@ builtin_lcd(int argc, char * argv[]) {
 	return 0;
 }
 
-int get_int(char *str) {
-	char *end;
+int
+get_int(char * str) {
+	char * end;
 	long int res;
 	size_t len;
 
@@ -130,7 +132,8 @@ int get_int(char *str) {
 	return res;
 }
 
-int builtin_lkill(int argc, char * argv[]) {
+int
+builtin_lkill(int argc, char * argv[]) {
 	int pid;
 	int res;
 	int signal_num = SIGTERM;
@@ -157,7 +160,7 @@ int builtin_lkill(int argc, char * argv[]) {
 }
 
 int builtin_lls(int argc, char * argv[]) {
-	DIR *dir;
+	DIR * dir;
 	struct dirent * entry;
 
 	if (argc != 1) {

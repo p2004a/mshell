@@ -1,5 +1,5 @@
 INC=-I../include
-CFLAGS=$(INC)
+CFLAGS=$(INC) -ansi -pedantic
 HDEPS=../include/siparse.h ../include/config.h siparseutils.h
 
 INSTALL_DIR=../

@@ -88,7 +88,6 @@ nextcommand(void){
 	
 	curr = nextcom;
 	nextcom++;
-//	nextcom->argv=NULL;
 	return curr;
 }
 
@@ -109,7 +108,7 @@ redirection * nextredir(void){
 
 void resetredirs(void){
 	nextred = redirsbuf;
-};
+}
 
 static redirection *  redirseqbuf[MAX_REDIRS*2];
 static redirection ** currentredirseq;
@@ -130,7 +129,7 @@ redirection ** closeredirseq(void){
 	currentredirseqstart = currentredirseq;
 	
 	return oldstart;
-};
+}
 
 void resetredirseqs(void){
 	currentredirseqstart = redirseqbuf;
@@ -160,7 +159,7 @@ pipeline closepipeline(void){
 	currentpipelinestart = currentpipelinecomm;
 	
 	return oldstart;
-};
+}
 
 void resetpipelines(void){
 	currentpipelinecomm = pipelinesbuf;
@@ -190,7 +189,7 @@ pipelineseq closepipelineseq(void){
 	currentpipelineseqstart = currentpipeline;
 	
 	return oldstart;
-};
+}
 
 void resetpipelineseqs(void){
 	currentpipeline = pipelineseqsbuf;
