@@ -7,6 +7,7 @@
 
 #include "linereader.h"
 #include "config.h"
+#include "utils.h"
 
 int
 lr_init(struct linereader * lr) {
@@ -89,9 +90,7 @@ lr_readline(struct linereader * lr, char const** res) {
 			lr->offset -= line_end + 1;
 			memmove(lr->buffor, lr->buffor + line_end + 1, lr->offset);
 		} else {
-			do {
-				read_bytes = read(STDIN_FILENO, lr->buffor + lr->offset, MAX_LINE_LENGTH + 1 - lr->offset);
-			} while (read_bytes == -1 && errno == EINTR);
+			EINTR_RETRY(read_bytes, read(STDIN_FILENO, lr->buffor + lr->offset, MAX_LINE_LENGTH + 1 - lr->offset));
 			if (read_bytes == -1) {
 				goto error;
 			}

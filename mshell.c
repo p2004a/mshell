@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <alloca.h>
 
 #include "config.h"
 #include "siparse.h"
@@ -17,19 +18,20 @@
 
 int
 redirect(const char *filename, int flags, int to_fd) {
-	int fd, fd_dup;
+	int fd, fd_dup, result;
 
-	fd = open(filename, flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	EINTR_RETRY(fd, open(filename, flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
 	if (fd == -1) {
 		fprintf(stderr, "%s: %s\n", filename, strerror(errno));
 		goto error;
 	}
-	fd_dup = dup2(fd, to_fd);
+	EINTR_RETRY(fd_dup, dup2(fd, to_fd));
 	if (fd_dup != to_fd) {
 		fprintf(stderr, "dup2 failed to copy %d to %d\n", fd, to_fd);
 		goto error;
 	}
-	if (close(fd) == -1) {
+	EINTR_RETRY(result, close(fd));
+	if (result == -1) {
 		fprintf(stderr, "closing %d failed: %s\n", fd, strerror(errno));
 		goto error;
 	}
@@ -39,27 +41,36 @@ error:
 }
 
 int
-exec_command(command * com) {
-	int return_status, status;
+exec_command(command * com, int in_fd, int out_fd) {
 	pid_t child_pid;
-
 	char *input_filename, *output_filename;
 	int output_additional_flags;
 	redirection ** redir;
+	int ret_fd;
 
 	child_pid = fork();
 	if (child_pid == -1) {
 		goto error;
 	}
 	if (child_pid) { /* parent */
-		do {
-			status = waitpid(child_pid, &return_status, 0);
-		} while (status == -1 && errno == EINTR);
-		if (status == -1) {
-			goto error;
-		}
-		return return_status;
+		return child_pid;
 	} else { /* child */
+		if (in_fd != STDIN_FILENO) {
+			EINTR_RETRY(ret_fd, dup2(in_fd, STDIN_FILENO));
+			if (ret_fd != STDIN_FILENO) {
+				fprintf(stderr, "dup2 failed to copy %d to %d\n", in_fd, STDIN_FILENO);
+				goto error;
+			}
+		}
+
+		if (out_fd != STDOUT_FILENO) {
+			EINTR_RETRY(ret_fd, dup2(out_fd, STDOUT_FILENO));
+			if (ret_fd != STDOUT_FILENO) {
+				fprintf(stderr, "dup2 failed to copy %d to %d\n", out_fd, STDOUT_FILENO);
+				goto error;
+			}
+		}
+
 		input_filename = NULL;
 		output_filename = NULL;
 
@@ -83,6 +94,12 @@ exec_command(command * com) {
 			goto child_error;
 		}
 
+		if (fcntl(STDIN_FILENO, F_SETFD, 0) == -1
+		  || fcntl(STDOUT_FILENO, F_SETFD, 0) == -1) {
+			fprintf(stderr, "cannot remove FD_CLOEXEC flag from file descriptors\n");
+			goto child_error;
+		}
+
 		execvp(com->argv[0], com->argv);
 		fprintf(stderr, "%s: %s\n", com->argv[0], strerror(errno));
 		goto child_error;
@@ -94,18 +111,64 @@ child_error:
 	exit(EXEC_FAILURE);
 }
 
+void swap_ptr(void ** a, void ** b) {
+	void *tmp_ptr = *a;
+	*a = *b;
+	*b = tmp_ptr;
+}
+
+int close_pipe(int p[2]) {
+	int result;
+
+	if (p[0] != STDIN_FILENO) {
+		EINTR_RETRY(result, close(p[0]));
+		if (result == -1) {
+			goto error;
+		}
+		p[0] = STDIN_FILENO;
+		EINTR_RETRY(result, close(p[1]));
+		if (result == -1) {
+			goto error;
+		}
+		p[1] = STDOUT_FILENO;
+	}
+	return 0;
+error:
+	return -1;
+}
+
 int exec_pipeline(pipeline pl) {
 	command *com;
-	int i, return_status, argc, pl_len;
+	int i, return_status, result, argc, pl_len, started_child;
 	builtin_func builtin;
 	pipeline tmp_pl;
+	pid_t child_pid;
+	int * p1, * p2;
+
+	p1 = alloca(sizeof(int) * 2);
+	p2 = alloca(sizeof(int) * 2);
+	p1[0] = p2[0] = STDIN_FILENO;
+	p1[1] = p2[1] = STDOUT_FILENO;
 
 	pl_len = 0;
 	for (tmp_pl = pl; *tmp_pl != NULL; ++tmp_pl) {
 		++pl_len;
 	}
 
+	started_child = 0;
 	for (i = 0; i < pl_len; ++i) {
+		swap_ptr((void **) &p1, (void **) &p2);
+		if (close_pipe(p2) == -1) {
+			goto error;
+		}
+		if (i < pl_len - 1) {
+			if (pipe(p2) == -1
+			  || fcntl(p2[0], F_SETFD, FD_CLOEXEC) == -1
+			  || fcntl(p2[1], F_SETFD, FD_CLOEXEC) == -1) {
+				goto error;
+			}
+		}
+
 		com = pl[i];
 
 		if (com->argv[0] == NULL) {
@@ -120,22 +183,44 @@ int exec_pipeline(pipeline pl) {
 				fflush(stderr);
 			}
 		} else {
-			return_status = exec_command(com);
-			if (return_status == -1) {
+			child_pid = exec_command(com, p1[0], p2[1]);
+			if (child_pid == -1) {
 				goto error;
 			}
-			if (WIFEXITED(return_status)) {
-				return_status = WEXITSTATUS(return_status);
-				if (return_status != 0 && return_status != EXEC_FAILURE) {
-					printf("Program returned status %d\n", return_status);
-					fflush(stdout);
-				}
-			} else if (WIFSIGNALED(return_status)) {
-				printf("Program killed by signal %d\n", WTERMSIG(return_status));
-				fflush(stdout);
-			}
+			started_child = 1;
 		}
 	}
+
+	if (close_pipe(p2) == -1
+	  || close_pipe(p1) == -1) {
+		goto error;
+	}
+
+	if (started_child) {
+		do {
+			result = waitpid(-1, NULL, 0);
+		} while (result == -1 && errno == EINTR);
+		if (result == -1) {
+			goto error;
+		}
+	}
+
+	/*do {
+		result = waitpid(child_pid, &return_status, 0);
+	} while (result == -1 && errno == EINTR);
+	if (result == -1) {
+		goto error;
+	}
+	if (WIFEXITED(return_status)) {
+		return_status = WEXITSTATUS(return_status);
+		if (return_status != 0 && return_status != EXEC_FAILURE) {
+			printf("Program returned status %d\n", return_status);
+			fflush(stdout);
+		}
+	} else if (WIFSIGNALED(return_status)) {
+		printf("Program killed by signal %d\n", WTERMSIG(return_status));
+		fflush(stdout);
+	}*/
 
 	return 0;
 error:
