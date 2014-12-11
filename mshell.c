@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 1
+#define _POSIX_C_SOURCE 200112L
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
@@ -15,6 +15,7 @@
 #include "utils.h"
 #include "builtins.h"
 #include "linereader.h"
+#include "childgroups.h"
 
 int
 redirect(const char *filename, int flags, int to_fd) {
@@ -139,7 +140,7 @@ error:
 
 int exec_pipeline(pipeline pl) {
 	command *com;
-	int i, return_status, result, argc, pl_len, started_child;
+	int i, return_status, argc, pl_len, started_child, cgn;
 	builtin_func builtin;
 	pipeline tmp_pl;
 	pid_t child_pid;
@@ -154,6 +155,8 @@ int exec_pipeline(pipeline pl) {
 	for (tmp_pl = pl; *tmp_pl != NULL; ++tmp_pl) {
 		++pl_len;
 	}
+
+	cgn = cg_new();
 
 	started_child = 0;
 	for (i = 0; i < pl_len; ++i) {
@@ -183,10 +186,15 @@ int exec_pipeline(pipeline pl) {
 				fflush(stderr);
 			}
 		} else {
+			cg_block_sigchld();
 			child_pid = exec_command(com, p1[0], p2[1]);
 			if (child_pid == -1) {
 				goto error;
 			}
+			if (cg_add_child(cgn, child_pid) == -1) {
+				goto error;
+			}
+			cg_unblock_sigchld();
 			started_child = 1;
 		}
 	}
@@ -197,13 +205,9 @@ int exec_pipeline(pipeline pl) {
 	}
 
 	if (started_child) {
-		do {
-			result = waitpid(-1, NULL, 0);
-		} while (result == -1 && errno == EINTR);
-		if (result == -1) {
-			goto error;
-		}
+		cg_wait(cgn);
 	}
+	cg_del(cgn);
 
 	/*do {
 		result = waitpid(child_pid, &return_status, 0);
@@ -224,6 +228,8 @@ int exec_pipeline(pipeline pl) {
 
 	return 0;
 error:
+	cg_unblock_sigchld();
+	cg_del(cgn);
 	return -1;
 }
 
@@ -289,6 +295,11 @@ main(int argc, char * argv[]) {
 		goto error;
 	}
 
+	result = cg_init();
+	if (result == -1) {
+		goto error;
+	}
+
 	do {
 		result = lr_readline(&lr, &line);
 		if (result == -1) {
@@ -302,10 +313,12 @@ main(int argc, char * argv[]) {
 		}
 	} while (line != NULL);
 
+	cg_clean();
 	lr_clean(&lr);
 	return 0;
 
 error:
+	cg_clean();
 	lr_clean(&lr);
 	perror("main: ");
 	exit(1);
