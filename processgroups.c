@@ -43,6 +43,7 @@ static int old_sa_set = 0;              /* for pg_clean */
 static struct sigaction old_sa;         /* old sigaction before pg_init */
 static sigset_t old_sigset;             /* old set before pg_block_sigchld */
 static volatile int got_sigchld;        /* for pg_wait_for_sigchld to distinct between signals */
+static int foreground_pgn = 0;
 
 group * _pg_get_group(int pgn) {
 	int i;
@@ -114,12 +115,20 @@ void sigchld_handler(int signo, siginfo_t * info, void * context) {
 					(processes[i].callback)(child_pid, return_status);
 				}
 				if (g->running == 0 && g->callback != NULL) {
-					(g->callback)(processes[i].pgn);
+					(g->callback)(g->pgn);
 				}
 				break;
 			}
 		}
 	} while (child_pid > 0);
+}
+
+void sigint_handler(int signo, siginfo_t * info, void * context) {
+#if _POSIX_VERSION < 200809L
+	if (foreground_pgn != 0) {
+		pg_kill(foreground_pgn, SIGINT);
+	}
+#endif
 }
 
 int pg_init() {
@@ -144,6 +153,14 @@ int pg_init() {
 		goto error;
 	}
 	old_sa_set = 1;
+
+	sa.sa_sigaction = sigint_handler;
+	sa.sa_flags = SA_SIGINFO;
+	sigemptyset(&sa.sa_mask);
+	sigaddset(&sa.sa_mask, SIGCHLD);
+	if (sigaction(SIGINT, &sa, NULL) == -1) {
+		goto error;
+	}
 
 	processes_cap = 30;
 	processes_size = 0;
@@ -292,7 +309,20 @@ void pg_wait(int pgn) {
 	pg_unblock_sigchld();
 }
 
-#if _POSIX_VERSION >= 200809L
+void pg_kill(int pgn, int signal) {
+	int i;
+
+	pg_block_sigchld();
+
+	for (i = processes_size; i >= 0; --i) {
+		if (processes[i].pgn == pgn && processes[i].running) {
+			kill(processes[i].pid, signal);
+		}
+	}
+
+	pg_unblock_sigchld();
+}
+
 int pg_foreground(int pgn) {
 	group * g;
 
@@ -302,13 +332,18 @@ int pg_foreground(int pgn) {
 			goto error;
 		}
 
+#if _POSIX_VERSION >= 200809L
 		tcsetpgrp(STDIN_FILENO, g->pid);
+#endif
 	} else {
+#if _POSIX_VERSION >= 200809L
 		tcsetpgrp(STDIN_FILENO, getpgid(0));
+#endif
 	}
+
+	foreground_pgn = pgn;
 
 	return 0;
 error:
 	return -1;
 }
-#endif

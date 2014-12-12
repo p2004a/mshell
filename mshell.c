@@ -244,14 +244,10 @@ int exec_pipeline(pipeline pl, int background) {
 	}
 
 	if (!background) {
-#if _POSIX_VERSION >= 200809L
 		pg_foreground(pgn);
-#endif
 		pg_wait(pgn);
 		pg_del(pgn);
-#if _POSIX_VERSION >= 200809L
 		pg_foreground(0);
-#endif
 	}
 
 	return 0;
