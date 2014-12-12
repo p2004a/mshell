@@ -79,6 +79,8 @@ int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 	if (child_pid) { /* parent */
 		return child_pid;
 	} else { /* child */
+		pg_clean();
+
 #if _POSIX_VERSION >= 200809L
 		if (setpgid(0, pg_pid) == -1) {
 			fprintf(stderr, "cannot set pgid to %d: %s\n", pg_pid, strerror(errno));

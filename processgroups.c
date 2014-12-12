@@ -174,6 +174,10 @@ void pg_clean() {
 		sigaction(SIGCHLD, &old_sa, NULL);
 		old_sa_set = 0;
 	}
+	if (sigchld_blocked_counter > 0) {
+		sigchld_blocked_counter = 1;
+		pg_unblock_sigchld();
+	}
 	free(processes);
 	free(groups);
 	processes = NULL;
