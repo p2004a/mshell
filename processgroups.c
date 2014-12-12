@@ -114,8 +114,12 @@ void sigchld_handler(int signo, siginfo_t * info, void * context) {
 				if (processes[i].callback != NULL) {
 					(processes[i].callback)(child_pid, return_status);
 				}
-				if (g->running == 0 && g->callback != NULL) {
-					(g->callback)(g->pgn);
+				if (g->running == 0) {
+					if (g->callback != NULL) {
+						(g->callback)(g->pgn);
+					} else {
+						pg_del(g->pgn);
+					}
 				}
 				break;
 			}
@@ -238,7 +242,7 @@ void pg_del(int pgn) {
 		*g = groups[groups_size];
 	}
 
-	for (i = processes_size; i >= 0; --i) {
+	for (i = processes_size - 1; i >= 0; --i) {
 		if (processes[i].pgn == pgn) {
 			--processes_size;
 			processes[i] = processes[processes_size];
@@ -314,7 +318,7 @@ void pg_kill(int pgn, int signal) {
 
 	pg_block_sigchld();
 
-	for (i = processes_size; i >= 0; --i) {
+	for (i = processes_size - 1; i >= 0; --i) {
 		if (processes[i].pgn == pgn && processes[i].running) {
 			kill(processes[i].pid, signal);
 		}
