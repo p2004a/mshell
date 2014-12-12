@@ -1,4 +1,5 @@
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
@@ -15,10 +16,9 @@
 #include "utils.h"
 #include "builtins.h"
 #include "linereader.h"
-#include "childgroups.h"
+#include "processgroups.h"
 
-int
-redirect(const char *filename, int flags, int to_fd) {
+int redirect(const char * filename, int flags, int to_fd) {
 	int fd, fd_dup, result;
 
 	EINTR_RETRY(fd, open(filename, flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
@@ -41,8 +41,7 @@ error:
 	return -1;
 }
 
-int
-exec_command(command * com, int in_fd, int out_fd) {
+int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 	pid_t child_pid;
 	char *input_filename, *output_filename;
 	int output_additional_flags;
@@ -56,6 +55,11 @@ exec_command(command * com, int in_fd, int out_fd) {
 	if (child_pid) { /* parent */
 		return child_pid;
 	} else { /* child */
+		if (setpgid(0, pg_pid) == -1) {
+			fprintf(stderr, "cannot set pgid to %d: %s\n", pg_pid, strerror(errno));
+			goto error;
+		}
+
 		if (in_fd != STDIN_FILENO) {
 			EINTR_RETRY(ret_fd, dup2(in_fd, STDIN_FILENO));
 			if (ret_fd != STDIN_FILENO) {
@@ -138,9 +142,9 @@ error:
 	return -1;
 }
 
-int exec_pipeline(pipeline pl) {
+int exec_pipeline(pipeline pl, int background) {
 	command *com;
-	int i, return_status, argc, pl_len, started_child, cgn;
+	int i, return_status, argc, pl_len, pgn;
 	builtin_func builtin;
 	pipeline tmp_pl;
 	pid_t child_pid;
@@ -156,9 +160,12 @@ int exec_pipeline(pipeline pl) {
 		++pl_len;
 	}
 
-	cgn = cg_new();
+	pgn = pg_new(NULL);
+	if (pgn == -1) {
+		goto error;
+	}
 
-	started_child = 0;
+	pg_block_sigchld();
 	for (i = 0; i < pl_len; ++i) {
 		swap_ptr((void **) &p1, (void **) &p2);
 		if (close_pipe(p2) == -1) {
@@ -186,35 +193,30 @@ int exec_pipeline(pipeline pl) {
 				fflush(stderr);
 			}
 		} else {
-			cg_block_sigchld();
-			child_pid = exec_command(com, p1[0], p2[1]);
+			child_pid = exec_command(com, p1[0], p2[1], pg_pid(pgn));
 			if (child_pid == -1) {
 				goto error;
 			}
-			if (cg_add_child(cgn, child_pid) == -1) {
+			if (pg_add_process(pgn, child_pid, NULL) == -1) {
 				goto error;
 			}
-			cg_unblock_sigchld();
-			started_child = 1;
 		}
 	}
+	pg_unblock_sigchld();
 
 	if (close_pipe(p2) == -1
 	  || close_pipe(p1) == -1) {
 		goto error;
 	}
 
-	if (started_child) {
-		cg_wait(cgn);
+	if (!background) {
+		pg_foreground(pgn);
+		pg_wait(pgn);
+		pg_del(pgn);
+		pg_foreground(0);
 	}
-	cg_del(cgn);
 
-	/*do {
-		result = waitpid(child_pid, &return_status, 0);
-	} while (result == -1 && errno == EINTR);
-	if (result == -1) {
-		goto error;
-	}
+	/*
 	if (WIFEXITED(return_status)) {
 		return_status = WEXITSTATUS(return_status);
 		if (return_status != 0 && return_status != EXEC_FAILURE) {
@@ -228,13 +230,11 @@ int exec_pipeline(pipeline pl) {
 
 	return 0;
 error:
-	cg_unblock_sigchld();
-	cg_del(cgn);
+	pg_unblock_sigchld();
 	return -1;
 }
 
-int
-check_line(line * ln) {
+int check_line(line * ln) {
 	pipeline * cl;
 	pipeline pl;
 	command * com;
@@ -261,8 +261,7 @@ check_line(line * ln) {
 	return 1;
 }
 
-int
-exec_command_line(const char * buffor) {
+int exec_command_line(const char * buffor) {
 	line * ln;
 	pipeline * cl;
 
@@ -274,7 +273,7 @@ exec_command_line(const char * buffor) {
 	}
 
 	for (cl = ln->pipelines; *cl != NULL; ++cl) {
-		if (exec_pipeline(*cl) == -1) {
+		if (exec_pipeline(*cl, (ln->flags & LINBACKGROUND) && *(cl + 1) == NULL) == -1) {
 			goto error;
 		}
 	}
@@ -284,8 +283,7 @@ error:
 	return -1;
 }
 
-int
-main(int argc, char * argv[]) {
+int main(int argc, char * argv[]) {
 	const char * line;
 	int result;
 	struct linereader lr;
@@ -295,7 +293,7 @@ main(int argc, char * argv[]) {
 		goto error;
 	}
 
-	result = cg_init();
+	result = pg_init();
 	if (result == -1) {
 		goto error;
 	}
@@ -313,12 +311,12 @@ main(int argc, char * argv[]) {
 		}
 	} while (line != NULL);
 
-	cg_clean();
+	pg_clean();
 	lr_clean(&lr);
 	return 0;
 
 error:
-	cg_clean();
+	pg_clean();
 	lr_clean(&lr);
 	perror("main: ");
 	exit(1);

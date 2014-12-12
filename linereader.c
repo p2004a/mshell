@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -9,8 +11,7 @@
 #include "config.h"
 #include "utils.h"
 
-int
-lr_init(struct linereader * lr) {
+int lr_init(struct linereader * lr) {
 	int result;
 	struct stat fd_stat;
 
@@ -32,8 +33,7 @@ error:
 	return -1;
 }
 
-int
-find_newline(char * buf, ssize_t size) {
+int find_newline(char * buf, ssize_t size) {
 	int i;
 	for (i = 0; i < size; ++i) {
 		if (buf[i] == '\n') {
@@ -43,8 +43,7 @@ find_newline(char * buf, ssize_t size) {
 	return -1;
 }
 
-int
-lr_readline(struct linereader * lr, char const** res) {
+int lr_readline(struct linereader * lr, char const** res) {
 	int line_end, finished_line, ignore_command, read_bytes;
 
 	finished_line = 1;
@@ -105,7 +104,6 @@ error:
 	return -1;
 }
 
-void
-lr_clean(struct linereader * lr) {
+void lr_clean(struct linereader * lr) {
 	free(lr->buffor);
 }

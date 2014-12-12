@@ -1,4 +1,5 @@
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -38,22 +39,19 @@ builtin_func get_builtin(const char * name) {
 	return NULL;
 }
 
-int
-builtin_undefined(int argc, char * argv[]) {
+int builtin_undefined(int argc, char * argv[]) {
 	fprintf(stderr, "Command %s undefined.\n", argv[0]);
 	return BUILTIN_ERROR;
 }
 
-int
-builtin_exit(int argc, char * argv[]) {
+int builtin_exit(int argc, char * argv[]) {
 	if (argc != 1) {
 		return BUILTIN_ERROR;
 	}
 	exit(0);
 }
 
-int 
-builtin_echo(int argc, char * argv[]) {
+int builtin_echo(int argc, char * argv[]) {
 	int i = 1;
 	if (argv[i]) printf("%s", argv[i++]);
 	while  (argv[i])
@@ -64,8 +62,7 @@ builtin_echo(int argc, char * argv[]) {
 	return 0;
 }
 
-int 
-builtin_cd(int argc, char * argv[]) {
+int builtin_cd(int argc, char * argv[]) {
 	char *path;
 	int res;
 
@@ -92,8 +89,7 @@ builtin_cd(int argc, char * argv[]) {
 }
 
 
-int 
-builtin_lcd(int argc, char * argv[]) {
+int builtin_lcd(int argc, char * argv[]) {
 	char *path;
 	int res;
 
@@ -117,8 +113,7 @@ builtin_lcd(int argc, char * argv[]) {
 	return 0;
 }
 
-int
-get_int(char * str) {
+int get_int(char * str) {
 	char * end;
 	long int res;
 	size_t len;
@@ -132,8 +127,7 @@ get_int(char * str) {
 	return res;
 }
 
-int
-builtin_lkill(int argc, char * argv[]) {
+int builtin_lkill(int argc, char * argv[]) {
 	int pid;
 	int res;
 	int signal_num = SIGTERM;

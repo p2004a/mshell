@@ -3,7 +3,7 @@ CFLAGS=$(INC) -Wall -Wextra -ansi -pedantic -Wno-unused-parameter
 
 PARSERDIR=input_parse
 
-SRCS=utils.c mshell.c builtins.c linereader.c childgroups.c
+SRCS=utils.c mshell.c builtins.c linereader.c processgroups.c
 OBJS:=$(SRCS:.c=.o)
 
 all: mshell 
