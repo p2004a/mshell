@@ -218,7 +218,7 @@ int exec_pipeline(pipeline pl, int background) {
 		}
 
 		builtin = get_builtin(com->argv[0]);
-		if (builtin && pl_len > 1) {
+		if (builtin && pl_len < 2) {
 			for (argc = 0; com->argv[argc]; ++argc);
 			if (builtin(argc, com->argv) == BUILTIN_ERROR) {
 				fprintf(stderr, "Builtin %s error.\n", com->argv[0]);
