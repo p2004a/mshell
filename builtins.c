@@ -10,6 +10,7 @@
 #include <dirent.h>
 
 #include "builtins.h"
+#include "utils.h"
 
 int builtin_echo(int, char * argv[]);
 int builtin_undefined(int, char * argv[]);
@@ -156,6 +157,7 @@ int builtin_lkill(int argc, char * argv[]) {
 int builtin_lls(int argc, char * argv[]) {
 	DIR * dir;
 	struct dirent * entry;
+	int result;
 
 	if (argc != 1) {
 		return BUILTIN_ERROR;
@@ -163,12 +165,14 @@ int builtin_lls(int argc, char * argv[]) {
 
 	dir = opendir(".");
 	while (dir) {
+		errno = 0;
 		entry = readdir(dir);
 		if (entry == NULL) {
-			closedir(dir);
-			if (errno) {
+			if (errno != 0) {
+				EINTR_RETRY(result, closedir(dir));
 				return BUILTIN_ERROR;
 			}
+			EINTR_RETRY(result, closedir(dir));
 			return 0;
 		}
 
