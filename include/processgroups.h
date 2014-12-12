@@ -31,9 +31,11 @@ int pg_running(int pgn);
 /* Wait until a specific group stop */
 void pg_wait(int pgn);
 
+#if _POSIX_VERSION >= 200809L
 /* Set procesgroup to foreground. If pgn == 0 it means to set the current
 process to foreground.  */
 int pg_foreground(int pgn);
+#endif
 
 /* Blocks SIGCHLD, calls to this function can be nested, if you call it twice, to
    stop blocking SIGCHLD you need to call pg_unblock_sigchld twice. When SIGCHLD

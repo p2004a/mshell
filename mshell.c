@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
-#include <alloca.h>
 #include <assert.h>
 
 #include "config.h"
@@ -80,10 +79,17 @@ int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 	if (child_pid) { /* parent */
 		return child_pid;
 	} else { /* child */
+#if _POSIX_VERSION >= 200809L
 		if (setpgid(0, pg_pid) == -1) {
 			fprintf(stderr, "cannot set pgid to %d: %s\n", pg_pid, strerror(errno));
 			goto error;
 		}
+#else
+		if (setsid() == -1) {
+			fprintf(stderr, "setsid failed: %s\n", strerror(errno));
+			goto error;
+		}
+#endif
 
 		if (in_fd != STDIN_FILENO) {
 			EINTR_RETRY(ret_fd, dup2(in_fd, STDIN_FILENO));
@@ -173,10 +179,11 @@ int exec_pipeline(pipeline pl, int background) {
 	builtin_func builtin;
 	pipeline tmp_pl;
 	pid_t child_pid;
+	int p_tab[4];
 	int * p1, * p2;
 
-	p1 = alloca(sizeof(int) * 2);
-	p2 = alloca(sizeof(int) * 2);
+	p1 = p_tab;
+	p2 = p_tab + 2;
 	p1[0] = p2[0] = STDIN_FILENO;
 	p1[1] = p2[1] = STDOUT_FILENO;
 
@@ -235,10 +242,14 @@ int exec_pipeline(pipeline pl, int background) {
 	}
 
 	if (!background) {
+#if _POSIX_VERSION >= 200809L
 		pg_foreground(pgn);
+#endif
 		pg_wait(pgn);
 		pg_del(pgn);
+#if _POSIX_VERSION >= 200809L
 		pg_foreground(0);
+#endif
 	}
 
 	return 0;

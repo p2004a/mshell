@@ -241,7 +241,9 @@ int pg_add_process(int pgn, pid_t pid, void (*f)(pid_t, int)) {
 	g->num_processes += 1;
 	g->running += 1;
 
+#if _POSIX_VERSION >= 200809L
 	setpgid(pid, g->pid); /* ignore errors */
+#endif
 
 	if (processes_size == processes_cap) {
 		processes_cap += processes_cap / 2;
@@ -286,6 +288,7 @@ void pg_wait(int pgn) {
 	pg_unblock_sigchld();
 }
 
+#if _POSIX_VERSION >= 200809L
 int pg_foreground(int pgn) {
 	group * g;
 
@@ -304,3 +307,4 @@ int pg_foreground(int pgn) {
 error:
 	return -1;
 }
+#endif
