@@ -10,6 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <alloca.h>
+#include <assert.h>
 
 #include "config.h"
 #include "siparse.h"
@@ -17,6 +18,30 @@
 #include "builtins.h"
 #include "linereader.h"
 #include "processgroups.h"
+
+typedef struct child {
+	pid_t pid;
+	int return_status;
+} child;
+
+child *dead_children = NULL;
+int dead_children_size = 0;
+int dead_children_capacity = 0;
+
+void dead_child(pid_t pid, int return_status) {
+	pg_block_sigchld();
+
+	if (dead_children_size == dead_children_capacity) {
+		dead_children_capacity += dead_children_capacity / 2;
+		dead_children = (child *) realloc(dead_children, sizeof(child) * dead_children_capacity);
+		assert(dead_children != NULL);
+	}
+	dead_children[dead_children_size].pid = pid;
+	dead_children[dead_children_size].return_status = return_status;
+	++dead_children_size;
+
+	pg_unblock_sigchld();
+}
 
 int redirect(const char * filename, int flags, int to_fd) {
 	int fd, fd_dup, result;
@@ -144,7 +169,7 @@ error:
 
 int exec_pipeline(pipeline pl, int background) {
 	command *com;
-	int i, return_status, argc, pl_len, pgn;
+	int i, argc, pl_len, pgn;
 	builtin_func builtin;
 	pipeline tmp_pl;
 	pid_t child_pid;
@@ -197,7 +222,7 @@ int exec_pipeline(pipeline pl, int background) {
 			if (child_pid == -1) {
 				goto error;
 			}
-			if (pg_add_process(pgn, child_pid, NULL) == -1) {
+			if (pg_add_process(pgn, child_pid, background ? dead_child : NULL) == -1) {
 				goto error;
 			}
 		}
@@ -215,18 +240,6 @@ int exec_pipeline(pipeline pl, int background) {
 		pg_del(pgn);
 		pg_foreground(0);
 	}
-
-	/*
-	if (WIFEXITED(return_status)) {
-		return_status = WEXITSTATUS(return_status);
-		if (return_status != 0 && return_status != EXEC_FAILURE) {
-			printf("Program returned status %d\n", return_status);
-			fflush(stdout);
-		}
-	} else if (WIFSIGNALED(return_status)) {
-		printf("Program killed by signal %d\n", WTERMSIG(return_status));
-		fflush(stdout);
-	}*/
 
 	return 0;
 error:
@@ -283,10 +296,38 @@ error:
 	return -1;
 }
 
+void print_dead_childred() {
+	int i, rs;
+
+	pg_block_sigchld();
+
+	for (i = 0; i < dead_children_size; ++i) {
+		rs = dead_children[i].return_status;
+
+		printf("Background process %d terminated. ", dead_children[i].pid);
+
+		if (WIFEXITED(rs)) {
+			printf("(exited with status %d)\n", WEXITSTATUS(rs));
+		} else if (WIFSIGNALED(rs)) {
+			printf("(killed by signal %d)\n", WTERMSIG(rs));
+		}
+	}
+
+	dead_children_size = 0;
+
+	pg_unblock_sigchld();
+}
+
 int main(int argc, char * argv[]) {
 	const char * line;
 	int result;
 	struct linereader lr;
+
+	dead_children_capacity = 50;
+	dead_children = (child *) malloc(sizeof(child) * dead_children_capacity);
+	if (dead_children == NULL) {
+		goto error;
+	}
 
 	result = lr_init(&lr);
 	if (result == -1) {
@@ -299,6 +340,9 @@ int main(int argc, char * argv[]) {
 	}
 
 	do {
+		if (lr.print_prompt) {
+			print_dead_childred();
+		}
 		result = lr_readline(&lr, &line);
 		if (result == -1) {
 			goto error;
@@ -316,6 +360,7 @@ int main(int argc, char * argv[]) {
 	return 0;
 
 error:
+	free(dead_children);
 	pg_clean();
 	lr_clean(&lr);
 	perror("main: ");
