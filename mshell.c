@@ -23,7 +23,7 @@ typedef struct child {
 	int return_status;
 } child;
 
-child *dead_children = NULL;
+child * dead_children = NULL;
 int dead_children_size = 0;
 int dead_children_capacity = 0;
 
@@ -67,7 +67,7 @@ error:
 
 int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 	pid_t child_pid;
-	char *input_filename, *output_filename;
+	char * input_filename, * output_filename;
 	int output_additional_flags;
 	redirection ** redir;
 	int ret_fd;
@@ -170,7 +170,7 @@ error:
 }
 
 int exec_pipeline(pipeline pl, int background) {
-	command *com;
+	command * com;
 	int i, argc, pl_len, pgn;
 	builtin_func builtin;
 	pipeline tmp_pl;
@@ -230,7 +230,6 @@ int exec_pipeline(pipeline pl, int background) {
 			}
 		}
 	}
-	pg_unblock_sigchld();
 
 	if (close_pipe(p2) == -1
 	  || close_pipe(p1) == -1) {
@@ -240,10 +239,10 @@ int exec_pipeline(pipeline pl, int background) {
 	if (!background) {
 		pg_foreground(pgn);
 		pg_wait(pgn);
-		pg_del(pgn);
 		pg_foreground(0);
 	}
 
+	pg_unblock_sigchld();
 	return 0;
 error:
 	pg_unblock_sigchld();
