@@ -33,7 +33,7 @@ void dead_child(pid_t pid, int return_status) {
 	if (dead_children_size == dead_children_capacity) {
 		dead_children_capacity += dead_children_capacity / 2;
 		dead_children = (child *) realloc(dead_children, sizeof(child) * dead_children_capacity);
-		assert(dead_children != NULL);
+		assert(dead_children != NULL); /* called from signal handler so no way to report error to main */
 	}
 	dead_children[dead_children_size].pid = pid;
 	dead_children[dead_children_size].return_status = return_status;
@@ -84,12 +84,12 @@ int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 #if _POSIX_VERSION >= 200809L
 		if (setpgid(0, pg_pid) == -1) {
 			fprintf(stderr, "cannot set pgid to %d: %s\n", pg_pid, strerror(errno));
-			goto error;
+			goto child_error;
 		}
 #else
 		if (setsid() == -1) {
 			fprintf(stderr, "setsid failed: %s\n", strerror(errno));
-			goto error;
+			goto child_error;
 		}
 #endif
 
@@ -97,7 +97,7 @@ int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 			EINTR_RETRY(ret_fd, dup2(in_fd, STDIN_FILENO));
 			if (ret_fd != STDIN_FILENO) {
 				fprintf(stderr, "dup2 failed to copy %d to %d\n", in_fd, STDIN_FILENO);
-				goto error;
+				goto child_error;
 			}
 		}
 
@@ -105,7 +105,7 @@ int exec_command(command * com, int in_fd, int out_fd, int pg_pid) {
 			EINTR_RETRY(ret_fd, dup2(out_fd, STDOUT_FILENO));
 			if (ret_fd != STDOUT_FILENO) {
 				fprintf(stderr, "dup2 failed to copy %d to %d\n", out_fd, STDOUT_FILENO);
-				goto error;
+				goto child_error;
 			}
 		}
 
