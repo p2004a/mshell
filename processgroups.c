@@ -39,11 +39,13 @@ static int processes_cap = 0;
 
 static int pg_num = 0;                  /* for generating next number of group */
 static int sigchld_blocked_counter = 0; /* counter for nested sigchld block/unblock */
-static int old_sa_set = 0;              /* for pg_clean */
-static struct sigaction old_sa;         /* old sigaction before pg_init */
+static struct sigaction old_sa_ttou,
+						old_sa_chld,
+						old_sa_int;     /* old sigaction before pg_init */
 static sigset_t old_sigset;             /* old set before pg_block_sigchld */
 static volatile int got_sigchld;        /* for pg_wait_for_sigchld to distinct between signals */
 static int foreground_pgn = 0;
+static int initialized = 0;				/* for pg_clean and pg_init */
 
 group * _pg_get_group(int pgn) {
 	int i;
@@ -70,15 +72,16 @@ void pg_block_sigchld() {
 	sigset_t sigset;
 
 	if (!sigchld_blocked_counter) {
-		sigemptyset(&sigset);
-		sigaddset(&sigset, SIGCHLD);
-		sigprocmask(SIG_BLOCK, &sigset, &old_sigset);
+		assert(sigemptyset(&sigset) == 0);
+		assert(sigaddset(&sigset, SIGCHLD) == 0);
+		assert(sigprocmask(SIG_BLOCK, &sigset, &old_sigset) == 0);
 	}
 	++sigchld_blocked_counter;
 }
 
 void pg_unblock_sigchld() {
 	sigset_t sigset;
+	int result;
 
 	if (sigchld_blocked_counter == 0) {
 		return;
@@ -86,10 +89,12 @@ void pg_unblock_sigchld() {
 
 	--sigchld_blocked_counter;
 	if (!sigchld_blocked_counter) {
-		sigemptyset(&sigset);
-		sigaddset(&sigset, SIGCHLD);
-		if (!sigismember(&old_sigset, SIGCHLD)) {
-			sigprocmask(SIG_UNBLOCK, &sigset, &old_sigset);
+		assert(sigemptyset(&sigset) == 0);
+		assert(sigaddset(&sigset, SIGCHLD) == 0);
+		result = sigismember(&old_sigset, SIGCHLD);
+		assert(result != -1);
+		if (!result) {
+			assert(sigprocmask(SIG_UNBLOCK, &sigset, &old_sigset) == 0);
 		}
 	}
 }
@@ -103,6 +108,8 @@ void sigchld_handler(int signo, siginfo_t * info, void * context) {
 
 	do {
 		EINTR_RETRY(child_pid, waitpid((pid_t)(-1), &return_status, WNOHANG));
+
+		assert(child_pid != -1 || errno == ECHILD);
 
 		for (i = 0; child_pid > 0 && i < processes_size; ++i) {
 			if (processes[i].pid == child_pid) {
@@ -140,31 +147,26 @@ int pg_init() {
 
 	pg_block_sigchld();
 
+	assert(initialized == 0);
+	initialized = 1;
+
 	sa.sa_handler = SIG_IGN;
-	sigemptyset(&sa.sa_mask);
+	assert(sigemptyset(&sa.sa_mask) == 0);
 	sa.sa_flags = 0;
-	if (sigaction(SIGTTOU, &sa, NULL) == -1) {
-		goto error;
-	}
+	assert(sigaction(SIGTTOU, &sa, &old_sa_ttou) == 0);
 
 	sa.sa_sigaction = sigchld_handler;
-	sigemptyset(&sa.sa_mask);
-	sigaddset(&sa.sa_mask, SIGINT);
+	assert(sigemptyset(&sa.sa_mask) == 0);
+	assert(sigaddset(&sa.sa_mask, SIGINT) == 0);
 	sa.sa_flags = SA_NOCLDSTOP | SA_SIGINFO;
 
-	old_sa_set = 0;
-	if (sigaction(SIGCHLD, &sa, &old_sa) == -1) {
-		goto error;
-	}
-	old_sa_set = 1;
+	assert(sigaction(SIGCHLD, &sa, &old_sa_chld) == 0);
 
 	sa.sa_sigaction = sigint_handler;
 	sa.sa_flags = SA_SIGINFO;
-	sigemptyset(&sa.sa_mask);
-	sigaddset(&sa.sa_mask, SIGCHLD);
-	if (sigaction(SIGINT, &sa, NULL) == -1) {
-		goto error;
-	}
+	assert(sigemptyset(&sa.sa_mask) == 0);
+	assert(sigaddset(&sa.sa_mask, SIGCHLD) == 0);
+	assert(sigaction(SIGINT, &sa, &old_sa_int) == 0);
 
 	processes_cap = 30;
 	processes_size = 0;
@@ -191,14 +193,20 @@ error:
 }
 
 void pg_clean() {
-	if (old_sa_set) {
-		sigaction(SIGCHLD, &old_sa, NULL);
-		old_sa_set = 0;
+	if (initialized == 0) {
+		return;
 	}
+	initialized = 0;
+
+	assert(sigaction(SIGTTOU, &old_sa_ttou, NULL) == 0);
+	assert(sigaction(SIGCHLD, &old_sa_chld, NULL) == 0);
+	assert(sigaction(SIGINT, &old_sa_int, NULL) == 0);
+
 	if (sigchld_blocked_counter > 0) {
 		sigchld_blocked_counter = 1;
 		pg_unblock_sigchld();
 	}
+
 	free(processes);
 	free(groups);
 	processes = NULL;
@@ -320,7 +328,7 @@ void pg_kill(int pgn, int signal) {
 
 	for (i = processes_size - 1; i >= 0; --i) {
 		if (processes[i].pgn == pgn && processes[i].running) {
-			kill(processes[i].pid, signal);
+			kill(processes[i].pid, signal); /* ignore errors */
 		}
 	}
 
@@ -337,11 +345,11 @@ int pg_foreground(int pgn) {
 		}
 
 #if _POSIX_VERSION >= 200809L
-		tcsetpgrp(STDIN_FILENO, g->pid);
+		tcsetpgrp(STDIN_FILENO, g->pid); /* ignore errors */
 #endif
 	} else {
 #if _POSIX_VERSION >= 200809L
-		tcsetpgrp(STDIN_FILENO, getpgid(0));
+		tcsetpgrp(STDIN_FILENO, getpgid(0)); /* ignore errors */
 #endif
 	}
 
