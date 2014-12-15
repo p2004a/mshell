@@ -149,12 +149,6 @@ child_error:
 	exit(EXEC_FAILURE);
 }
 
-void swap_ptr(void ** a, void ** b) {
-	void *tmp_ptr = *a;
-	*a = *b;
-	*b = tmp_ptr;
-}
-
 int close_pipe(int p[2]) {
 	int result;
 

@@ -1,14 +1,8 @@
 #ifndef _UTILS_H_
 #define _UTILS_H_
 
-#include "siparse.h"
+#define EINTR_RETRY(res, call) do { res = (call); } while (res == -1 && errno == EINTR)
 
-void printcommand(command *, int);
-void printpipeline(pipeline, int);
-void printparsedline(line *);
-
-command * pickfirstcommand(line *);
+void swap_ptr(void ** a, void ** b);
 
 #endif /* !_UTILS_H_ */
-
-#define EINTR_RETRY(res, call) do { res = (call); } while (res == -1 && errno == EINTR)
