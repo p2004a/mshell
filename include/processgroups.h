@@ -13,13 +13,13 @@ void pg_clean();
 /* Creates new group and return it's id or -1 if error */
 int pg_new(void (*f)(int));
 
-/* Deletes a group, if group doesn't exists it doesn't to anything */
+/* Deletes a group, if group doesn't exists it doesn't do anything */
 void pg_del(int pgn);
 
-/* Adds a process to group returns -1 on error.
-   If its first process added to the group it sets it as the leader of the
-   group. Before that the pid of process group is 0.
-   This function assumes that proces is running. */
+/* Adds a process to group. Returns -1 on error.
+   If it is the first process added to the group it is set as the leader of the
+   group. Before that, the pid of the process group is 0.
+   This function assumes that process is running. */
 int pg_add_process(int pgn, pid_t pid, void (*f)(pid_t, int));
 
 /* Gets the proces group pid or (pid_t)-1 on error */
@@ -34,8 +34,8 @@ void pg_wait(int pgn);
 /* send signal to all processes in group */
 void pg_kill(int pgn, int signal);
 
-/* Set procesgroup to foreground. If pgn == 0 it means to set the current
-process to foreground.  */
+/* Set procesgroup in foreground. If pgn == 0 it means to set the current
+process in foreground.  */
 int pg_foreground(int pgn);
 
 /* Blocks SIGCHLD, calls to this function can be nested, if you call it twice, to
@@ -44,7 +44,7 @@ int pg_foreground(int pgn);
 void pg_block_sigchld();
 void pg_unblock_sigchld();
 
-/* BLocks execution until SIGCHLD is received. Doesn't blog other signals while
+/* BLocks execution until SIGCHLD is received. Doesn't block other signals while
    waiting for SIGCHLD. */
 void pg_wait_for_sigchld();
 
